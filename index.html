@@ -4,15 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Monitor de Motor 3D</title>
-<link rel="stylesheet" href="monitor.css?v=6">
+<link rel="stylesheet" href="monitor.css?v=7">
 </head>
 <body>
 
 <header class="top">
   <div class="wrap bar">
     <div class="brand">
-      <span class="logo" aria-hidden="true">ϟ</span>
-      <div><b>Monitor de Condición de Motor</b><small>Corriente · Temperatura · Vibración — ESP32-S3</small></div>
+      <div class="escudos">
+        <img src="escudo_unsa.png" alt="Escudo de la Universidad Nacional de San Agustín de Arequipa" width="34" height="42">
+        <i aria-hidden="true"></i>
+        <img src="escudo_eie.png" alt="Escudo de la Escuela Profesional de Ingeniería Eléctrica UNSA" width="37" height="42">
+      </div>
+      <div><b>Monitor de Condición de Motor</b><small>UNSA · Ingeniería Eléctrica — Corriente · Temperatura · Vibración</small></div>
     </div>
     <div class="controls">
       <div class="seg" role="group" aria-label="Fuente de datos">
@@ -347,9 +351,19 @@
     <span id="nRows">0 muestras</span>
     <span id="nLoss"></span>
     <button type="button" class="linkbtn" id="clearBtn">Limpiar sesión</button>
-    <a href="index_anterior.html">Interfaz anterior</a>
+    <a href="https://mastop-boop.github.io/monitor-motor/">Interfaz anterior</a>
     <span class="muted">Mantenga la pestaña abierta durante el ensayo y descargue los datos antes de cerrarla.</span>
   </footer>
+
+  <section class="institucion" aria-label="Institución">
+    <img src="escudo_unsa.png" alt="Escudo de la Universidad Nacional de San Agustín de Arequipa" width="62" height="76">
+    <div>
+      <b>Universidad Nacional de San Agustín de Arequipa</b>
+      <span>Facultad de Ingeniería de Producción y Servicios · Escuela Profesional de Ingeniería Eléctrica</span>
+      <small>Monitoreo de condición de un motor de inducción trifásico con ESP32-S3 · Arequipa, Perú</small>
+    </div>
+    <img src="escudo_eie.png" alt="Escudo de la Escuela Profesional de Ingeniería Eléctrica UNSA" width="66" height="76">
+  </section>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>

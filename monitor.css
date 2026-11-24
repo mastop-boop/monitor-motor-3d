@@ -268,3 +268,17 @@ body{background-image:radial-gradient(ellipse at 82% -12%,color-mix(in srgb,var(
   .ov-t{left:14px}.ov-v{right:14px}.ov-i{display:none}
   .hint3d{display:none}
 }
+/* ===== escudos institucionales ===== */
+.escudos{display:flex;align-items:center;gap:8px;padding:4px 10px;border-radius:11px;background:#fff;
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--line) 80%,transparent),0 4px 14px #0003;flex:none}
+.escudos img{display:block;height:42px;width:auto}
+.escudos i{width:1px;height:30px;background:#d5dce2}
+.institucion{display:flex;align-items:center;justify-content:center;gap:clamp(14px,3vw,34px);margin:6px 0 30px;padding:18px 22px;
+  border-radius:14px;border:1px solid var(--line);background:linear-gradient(90deg,color-mix(in srgb,#7a1f23 14%,var(--panel)),var(--panel) 35%,var(--panel) 65%,color-mix(in srgb,#5b3a6b 14%,var(--panel)));text-align:center}
+.institucion img{height:76px;width:auto;flex:none;padding:6px;border-radius:12px;background:#fff}
+.institucion div{display:grid;gap:4px;min-width:0}
+.institucion b{font-size:17px;letter-spacing:.01em;text-wrap:balance}
+.institucion span{font-size:13px;color:var(--ink);opacity:.85}
+.institucion small{font-size:12px;color:var(--muted)}
+@media(max-width:560px){.escudos img{height:34px}.institucion{flex-wrap:wrap}.institucion img{height:58px}.institucion div{order:3;flex-basis:100%}}
+@media print{.escudos{box-shadow:none}}
