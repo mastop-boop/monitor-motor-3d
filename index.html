@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Monitor de Motor 3D</title>
+<link rel="stylesheet" href="monitor.css?v=6">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap bar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">ϟ</span>
+      <div><b>Monitor de Condición de Motor</b><small>Corriente · Temperatura · Vibración — ESP32-S3</small></div>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Fuente de datos">
+        <button type="button" data-mode="live" class="on">En vivo</button>
+        <button type="button" data-mode="demo">Demo</button>
+      </div>
+      <span id="conn" class="pill" role="status">Conectando…</span>
+      <span id="clock" class="clock"></span>
+      <button type="button" id="vozBtn" class="btn ghost" title="Activar o silenciar el asistente de voz">🔊 Voz</button>
+      <button type="button" id="themeBtn" class="btn ghost icon" title="Cambiar tema claro / oscuro" aria-label="Cambiar tema">◐</button>
+    </div>
+  </div>
+</header>
+
+<div id="demoBar" class="demobar" hidden>
+  <div class="wrap demorow">
+    <span><b>MODO DEMOSTRACIÓN</b> — datos simulados en el navegador, no provienen del ESP32.</span>
+    <label>Escenario
+      <select id="scenario">
+        <option value="auto">Ciclo automático</option>
+        <option value="normal">Operación normal</option>
+        <option value="desalineacion">Eje desalineado</option>
+        <option value="vibracion">Vibración alta</option>
+        <option value="calentamiento">Sobrecalentamiento</option>
+        <option value="parada">Motor detenido</option>
+      </select>
+    </label>
+    <span id="scenNow" class="muted"></span>
+    <button type="button" class="btn ghost" id="simArranque">↻ Simular arranque</button>
+  </div>
+</div>
+
+<main class="wrap">
+
+  <div id="banner" class="banner off" aria-live="polite">
+    <span class="dot"></span><div><b id="bannerTitle">Esperando datos…</b><span id="bannerText">Conecte el ESP32 o active el modo Demo.</span></div>
+  </div>
+
+  <section class="resumen" aria-label="Resumen de la sesión">
+    <div><span class="ico">⏱</span><small>Sesión</small><b id="rsSesion">00:00:00</b></div>
+    <div><span class="ico">▤</span><small>Muestras</small><b id="rsMuestras">0</b></div>
+    <div><span class="ico">⚡</span><small>Último arranque</small><b id="rsArranque">—</b></div>
+    <div><span class="ico">⚠</span><small>Alarmas sin reconocer</small><b id="rsAlarmas">0</b></div>
+    <div><span class="ico">◉</span><small>Asistente de voz</small><b id="rsVoz">—</b></div>
+  </section>
+
+  <!-- KPIs -->
+  <section class="kpis" aria-label="Indicadores principales">
+    <article class="card kpi" id="kpiI" data-lv="off">
+      <div class="khead"><span class="eyebrow"><i class="kico">⚡</i>Corriente · JXK-10</span><span class="badge lv-off" id="bI">—</span></div>
+      <div class="val"><strong id="vI">—</strong><span id="uI">A</span></div>
+      <div class="meter"><i id="mI"></i></div><canvas class="spark" id="spI" aria-hidden="true"></canvas>
+      <div class="ksub"><span>Pico: <b id="vIpk">—</b></span><span>Nominal: <b id="vInom">—</b></span></div>
+    </article>
+    <article class="card kpi" id="kpiT" data-lv="off">
+      <div class="khead"><span class="eyebrow"><i class="kico">🌡</i>Temperatura · NTC</span><span class="badge lv-off" id="bT">—</span></div>
+      <div class="val"><strong id="vT">—</strong><span>°C</span></div>
+      <div class="meter"><i id="mT"></i></div><canvas class="spark" id="spT" aria-hidden="true"></canvas>
+      <div class="ksub"><span>Máx. sesión: <b id="vTmax">—</b></span><span>Crítica: <b id="vTcrit">—</b></span></div>
+    </article>
+    <article class="card kpi" id="kpiV" data-lv="off">
+      <div class="khead"><span class="eyebrow"><i class="kico">〰</i>Vibración · ADXL345</span><span class="badge lv-off" id="bV">—</span></div>
+      <div class="val"><strong id="vV">—</strong><span>mg</span></div>
+      <div class="meter"><i id="mV"></i></div><canvas class="spark" id="spV" aria-hidden="true"></canvas>
+      <div class="ksub"><span>Global filtrada (X·Y·Z)</span><span class="chip" id="chipMis" hidden>⚠ Eje desalineado</span></div>
+    </article>
+    <article class="card kpi" id="kpiF" data-lv="off">
+      <div class="khead"><span class="eyebrow"><i class="kico">⚙</i>Diagnóstico ESP32</span><span class="badge lv-off" id="bF">—</span></div>
+      <div class="val small"><strong id="vF">—</strong></div>
+      <div class="ksub col">
+        <span>Conexión estimada: <b id="vFase">—</b></span>
+        <span>Lazo 4–20 mA: <b id="vLazo">—</b></span>
+      </div>
+    </article>
+  </section>
+
+  <!-- Motor + vibración -->
+  <section class="row2">
+    <article class="card">
+      <div class="chead">
+        <div><span class="eyebrow">Modelo interactivo</span><h2>Motor de inducción — estado térmico</h2></div>
+        <div class="vctl">
+          <div class="seg" role="group" aria-label="Tipo de vista">
+            <button type="button" data-vista="3d" class="on">3D</button><button type="button" data-vista="2d">Plano</button>
+          </div>
+          <span class="badge lv-off" id="bT2">—</span>
+        </div>
+      </div>
+      <div class="vista3d" id="vista3d">
+        <span class="hud tl"></span><span class="hud tr"></span><span class="hud bl"></span><span class="hud br"></span>
+        <div class="ov ov-t"><small>NTC · BOBINADO</small><b id="o3T">— °C</b></div>
+        <div class="ov ov-i"><small>JXK-10 · CORRIENTE</small><b id="o3I">— A</b></div>
+        <div class="ov ov-v"><small>ADXL345 · VIBRACIÓN</small><b id="o3V">— mg</b></div>
+        <div class="ov-mis" id="o3Mis" hidden>⚠ EJE DESALINEADO</div>
+        <div class="ctl3d">
+          <button type="button" class="btn ghost" id="b3Reset" title="Volver a la vista inicial">⟲ Vista</button>
+          <button type="button" class="btn ghost" id="b3Auto" title="Rotación automática">↻ Girar</button>
+        </div>
+        <p class="hint3d">Arrastre para rotar · rueda para acercar · clic derecho para desplazar</p>
+      </div>
+      <svg id="motor" class="motor" hidden viewBox="0 0 660 360" role="img" aria-label="Motor industrial cuyo color cambia con la temperatura">
+        <defs>
+          <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#fff" stop-opacity=".42"/>
+            <stop offset=".35" stop-color="#fff" stop-opacity=".06"/>
+            <stop offset=".7" stop-color="#000" stop-opacity=".12"/>
+            <stop offset="1" stop-color="#000" stop-opacity=".5"/>
+          </linearGradient>
+          <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#c9d2db"/><stop offset=".5" stop-color="#7d8a97"/><stop offset="1" stop-color="#3b4652"/>
+          </linearGradient>
+          <filter id="blur" x="-30%" y="-60%" width="160%" height="220%"><feGaussianBlur stdDeviation="22"/></filter>
+          <clipPath id="shaftClip"><rect x="492" y="181" width="72" height="20" rx="3"/></clipPath>
+          <clipPath id="loadClip"><rect x="604" y="181" width="56" height="20"/></clipPath>
+        </defs>
+
+        <!-- callouts -->
+        <g class="callouts">
+          <path d="M210 160 L150 40 L40 40" class="lead"/>
+          <circle cx="210" cy="160" r="4" class="probe"/>
+          <text x="40" y="30" class="cl-t">NTC · BOBINADO</text>
+          <text x="40" y="60" class="cl-v" id="svT">— °C</text>
+
+          <path d="M300 62 L300 22 L340 22" class="lead"/>
+          <text x="346" y="18" class="cl-t">JXK-10 · CORRIENTE</text>
+          <text x="346" y="40" class="cl-v" id="svI">— A</text>
+
+          <path d="M483 140 L520 76 L652 76" class="lead"/>
+          <text x="652" y="66" class="cl-t" text-anchor="end">ADXL345 · RODAMIENTO</text>
+          <text x="652" y="98" class="cl-v" text-anchor="end" id="svV">— mg</text>
+        </g>
+
+        <!-- base -->
+        <rect x="70" y="300" width="560" height="18" rx="3" fill="url(#steel)"/>
+        <rect x="70" y="316" width="560" height="6" fill="#000" opacity=".25"/>
+
+        <g id="motorBody" class="mbody">
+          <ellipse cx="300" cy="190" rx="250" ry="105" class="glow" filter="url(#blur)"/>
+          <!-- feet -->
+          <path d="M170 262 L150 300 L250 300 L232 262 Z" class="mc"/>
+          <path d="M370 262 L352 300 L452 300 L432 262 Z" class="mc"/>
+          <path d="M170 262 L150 300 L250 300 L232 262 Z M370 262 L352 300 L452 300 L432 262 Z" fill="url(#shade)"/>
+          <!-- fan cover -->
+          <path d="M150 110 L98 122 Q76 128 76 150 L76 232 Q76 254 98 260 L150 272 Z" class="mc"/>
+          <path d="M150 110 L98 122 Q76 128 76 150 L76 232 Q76 254 98 260 L150 272 Z" fill="url(#shade)"/>
+          <g class="grill"><path d="M92 140 V242 M102 134 V248 M112 130 V252 M122 127 V255 M132 124 V258"/></g>
+          <!-- frame -->
+          <rect x="148" y="98" width="300" height="186" rx="22" class="mc"/>
+          <g class="fins">
+            <path d="M160 116 H436 M156 132 H440 M154 148 H442 M154 164 H442 M154 180 H442 M154 196 H442 M154 212 H442 M154 228 H442 M156 244 H440 M160 260 H436"/>
+          </g>
+          <rect x="148" y="98" width="300" height="186" rx="22" fill="url(#shade)"/>
+          <!-- terminal box -->
+          <rect x="262" y="62" width="88" height="40" rx="6" class="mc"/>
+          <rect x="262" y="62" width="88" height="40" rx="6" fill="url(#shade)"/>
+          <rect x="250" y="96" width="112" height="8" rx="2" class="mc dark"/>
+          <!-- nameplate / live display -->
+          <rect x="250" y="160" width="120" height="58" rx="6" class="plate"/>
+          <text x="310" y="180" class="plate-t" text-anchor="middle">TEMP. BOBINADO</text>
+          <text x="310" y="206" class="plate-v" text-anchor="middle" id="svPlate">— °C</text>
+          <!-- end shield + bearing -->
+          <path d="M446 112 L474 126 L474 256 L446 270 Z" class="mc"/>
+          <path d="M446 112 L474 126 L474 256 L446 270 Z" fill="url(#shade)"/>
+          <rect x="472" y="160" width="22" height="62" rx="4" fill="url(#steel)"/>
+          <rect x="474" y="140" width="18" height="16" rx="2" class="sensor"/>
+          <!-- shaft -->
+          <rect x="492" y="181" width="72" height="20" rx="3" fill="url(#steel)"/>
+          <g clip-path="url(#shaftClip)"><g class="spin"><path d="M456 210 L476 172 M468 210 L488 172 M480 210 L500 172 M492 210 L512 172 M504 210 L524 172 M516 210 L536 172 M528 210 L548 172 M540 210 L560 172 M552 210 L572 172 M564 210 L584 172" class="stripes"/></g></g>
+          <!-- coupling half (motor side) -->
+          <rect x="562" y="164" width="22" height="54" rx="4" class="coupling"/>
+        </g>
+
+        <!-- driven load side -->
+        <g id="loadSide" class="load">
+          <rect x="584" y="164" width="22" height="54" rx="4" class="coupling"/>
+          <rect x="604" y="181" width="56" height="20" fill="url(#steel)"/>
+          <g clip-path="url(#loadClip)"><g class="spin"><path d="M568 210 L588 172 M580 210 L600 172 M592 210 L612 172 M604 210 L624 172 M616 210 L636 172 M628 210 L648 172 M640 210 L660 172 M652 210 L672 172" class="stripes"/></g></g>
+        </g>
+        <path d="M470 191 H660" class="axis-line"/>
+        <g id="misMark" class="mis-mark">
+          <path d="M583 140 V242" class="mis-line"/>
+          <rect x="520" y="248" width="128" height="26" rx="6" class="mis-box"/>
+          <text x="584" y="266" text-anchor="middle" class="mis-t">⚠ EJE DESALINEADO</text>
+        </g>
+      </svg>
+
+      <div class="thermo">
+        <div class="tbar" id="tbar"><i id="tmark"></i></div>
+        <div class="tticks" id="tticks"></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="chead">
+        <div><span class="eyebrow">Análisis de vibración</span><h2>Severidad y alineación del eje</h2></div>
+        <span class="badge lv-off" id="bV2">—</span>
+      </div>
+
+      <div class="scalebox">
+        <div class="scale" id="vscale">
+          <div class="z z-ok"><span>BAJA</span></div><div class="z z-warn"><span>MEDIA</span></div><div class="z z-alarm"><span>ALTA</span></div>
+          <i class="needle" id="vneedle"></i>
+        </div>
+        <div class="scalelbl" id="vscalelbl"></div>
+      </div>
+
+      <div class="axes">
+        <div class="axis"><b class="cx">X <em id="axX"></em></b><div class="track"><i id="fX" style="background:var(--cx)"></i></div><span id="tX">—</span></div>
+        <div class="axis"><b class="cy">Y <em id="axY"></em></b><div class="track"><i id="fY" style="background:var(--cy)"></i></div><span id="tY">—</span></div>
+        <div class="axis"><b class="cz">Z <em id="axZ"></em></b><div class="track"><i id="fZ" style="background:var(--cz)"></i></div><span id="tZ">—</span></div>
+      </div>
+
+      <div class="diag" id="diag" data-lv="off">
+        <div><span class="eyebrow">Relación axial / radial</span><strong id="vRatio">—</strong></div>
+        <div><span class="eyebrow">Diagnóstico de eje</span><strong id="vAlign">Sin datos</strong></div>
+        <div><span class="eyebrow">Inclinación X · Y · Z</span><strong id="vAng">—</strong></div>
+      </div>
+    </article>
+  </section>
+
+  <!-- toolbar de gráficas -->
+  <section class="toolbar card">
+    <div class="tgroup">
+      <span class="eyebrow">Ventana</span>
+      <div class="seg" role="group" aria-label="Ventana de tiempo">
+        <button type="button" data-win="30000">30 s</button>
+        <button type="button" data-win="60000" class="on">1 min</button>
+        <button type="button" data-win="300000">5 min</button>
+        <button type="button" data-win="all">Todo</button>
+      </div>
+      <button type="button" id="pauseBtn" class="btn ghost">❚❚ Pausar gráficas</button>
+    </div>
+    <div class="tgroup">
+      <span class="eyebrow">Descargas</span>
+      <button type="button" class="btn" id="dlCsv" disabled>↓ Datos CSV</button>
+      <button type="button" class="btn ghost" id="dlEv" disabled>↓ Alarmas CSV</button>
+      <button type="button" class="btn ghost" id="dlJson" disabled>↓ Sesión JSON</button>
+      <button type="button" class="btn ghost" id="printBtn">⎙ Imprimir</button>
+    </div>
+  </section>
+
+  <section class="row2 charts">
+    <article class="card">
+      <div class="chead">
+        <div><span class="eyebrow">Transmisor JXK-10 · 500 muestras/s</span><h2>Corriente del motor</h2></div>
+        <div class="onda-ctrl">
+          <div class="seg" role="group" aria-label="Vista de corriente">
+            <button type="button" data-iv="arranque" class="on">Arranque</button>
+            <button type="button" data-iv="vivo">Onda en vivo</button>
+            <button type="button" data-iv="rms">Tendencia RMS</button>
+          </div>
+          <span id="ondaOpc" class="onda-ctrl">
+            <label>Ventana <select id="ondaVen">
+              <option value="100">100 ms</option><option value="200">200 ms</option><option value="500">500 ms</option>
+              <option value="1000" selected>1 s</option><option value="3000">3 s</option><option value="5000">5 s</option>
+              <option value="10000">10 s</option><option value="30000">30 s</option><option value="60000">1 min</option>
+              <option value="300000">5 min</option><option value="all">Todo</option></select></label>
+            <label>Red <select id="ondaF"><option value="60" selected>60 Hz</option><option value="50">50 Hz</option></select></label>
+          </span>
+          <span id="ondaCapBox" class="onda-ctrl">
+            <label>Capturar <select id="capDur" aria-label="Duración de la captura automática de arranque">
+              <option value="1000">1 s</option><option value="3000">3 s</option><option value="5000">5 s</option>
+              <option value="10000">10 s</option><option value="30000">30 s</option><option value="60000">1 min</option></select></label>
+            <select id="ondaCap" aria-label="Capturas de arranque"><option>Sin capturas</option></select>
+            <button type="button" class="btn ghost" id="capturar">● Capturar ahora</button>
+            <button type="button" class="btn ghost" id="dlOnda" disabled>↓ CSV</button>
+          </span>
+        </div>
+      </div>
+      <canvas id="cW" class="chart" aria-label="Forma de onda equivalente de la corriente"></canvas>
+      <canvas id="cI" class="chart" aria-label="Corriente RMS en el tiempo" hidden></canvas>
+      <div class="wstats">
+        <div><span class="eyebrow">Pico instantáneo equivalente</span><strong id="wPico">—</strong></div>
+        <div><span class="eyebrow">I RMS máxima de arranque</span><strong id="wMax">—</strong></div>
+        <div><span class="eyebrow">I RMS en régimen</span><strong id="wReg">—</strong></div>
+        <div><span class="eyebrow">Arranque / régimen</span><strong id="wRel">—</strong></div>
+      </div>
+      <p class="note">Onda sinusoidal equivalente i(t) = √2 · I<sub>RMS</sub>(t) · sen(2πft): la amplitud es la corriente RMS medida cada 2 ms; la forma sinusoidal es ideal, porque el JXK-10 entrega el valor RMS y no la onda instantánea. El arranque se captura automáticamente durante el tiempo elegido en «Capturar» cuando la corriente sube desde reposo. <span class="muted" id="iStats"></span></p>
+    </article>
+    <article class="card">
+      <div class="chead"><div><span class="eyebrow">Tendencia · ADXL345</span><h2>Vibración por eje</h2></div>
+        <div class="legend"><b class="cx">● X</b><b class="cy">● Y</b><b class="cz">● Z</b><span class="muted">mg · franjas = zonas de severidad</span></div></div>
+      <canvas id="cV" class="chart" aria-label="Vibración por eje en el tiempo"></canvas>
+    </article>
+    <article class="card">
+      <div class="chead"><div><span class="eyebrow">Tendencia</span><h2>Temperatura del bobinado</h2></div><span class="muted small" id="tStats"></span></div>
+      <canvas id="cT" class="chart" aria-label="Temperatura en el tiempo"></canvas>
+    </article>
+  </section>
+
+  <section class="row2 bottom">
+    <article class="card">
+      <div class="chead">
+        <div><span class="eyebrow">Registro de eventos</span><h2>Alarmas y avisos <span class="count" id="unack" hidden>0</span></h2></div>
+        <button type="button" class="btn ghost" id="ackBtn">✓ Reconocer todo</button>
+      </div>
+      <div class="log">
+        <table>
+          <thead><tr><th>Hora</th><th>Variable</th><th>Nivel</th><th>Mensaje</th></tr></thead>
+          <tbody id="logBody"><tr class="empty"><td colspan="4">Sin eventos registrados.</td></tr></tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="chead"><div><span class="eyebrow">Configuración</span><h2>Umbrales de alarma</h2></div><button type="button" class="btn ghost" id="cfgReset">Restablecer</button></div>
+      <form id="cfg" class="cfg" autocomplete="off">
+        <fieldset>
+          <legend>Vibración (mg, global filtrada)</legend>
+          <label>Inicio nivel medio<input type="number" step="0.5" min="0" data-k="vibMed"></label>
+          <label>Inicio nivel alto<input type="number" step="0.5" min="0" data-k="vibAlt"></label>
+          <label>Eje axial del sensor<select data-k="axial"><option>X</option><option>Y</option><option>Z</option></select></label>
+          <label>Relación axial/radial para desalineación<input type="number" step="0.05" min="0" data-k="ratio"></label>
+        </fieldset>
+        <fieldset>
+          <legend>Temperatura (°C)</legend>
+          <label>Precaución desde<input type="number" step="1" data-k="tWarn"></label>
+          <label>Alta desde<input type="number" step="1" data-k="tHigh"></label>
+          <label>Crítica desde<input type="number" step="1" data-k="tCrit"></label>
+        </fieldset>
+        <fieldset>
+          <legend>Corriente y avisos</legend>
+          <label>Corriente nominal (A)<input type="number" step="0.1" min="0" data-k="iNom"></label>
+          <label class="check"><input type="checkbox" data-k="sound"> Alarma sonora en nivel alto/crítico</label>
+        </fieldset>
+        <p class="note" id="cfgMsg">Valores de referencia para laboratorio. Ajústelos con los datos de placa del motor y la norma aplicable (p. ej. clase de aislamiento IEC 60034-1, severidad ISO 10816 / 20816).</p>
+      </form>
+    </article>
+  </section>
+
+  <footer class="foot">
+    <span id="nRows">0 muestras</span>
+    <span id="nLoss"></span>
+    <button type="button" class="linkbtn" id="clearBtn">Limpiar sesión</button>
+    <a href="index_anterior.html">Interfaz anterior</a>
+    <span class="muted">Mantenga la pestaña abierta durante el ensayo y descargue los datos antes de cerrarla.</span>
+  </footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="motor3d.js?v=1"></script>
+<script src="voz.js?v=1"></script>
+<script src="monitor.js?v=8"></script>
+</body>
+</html>
