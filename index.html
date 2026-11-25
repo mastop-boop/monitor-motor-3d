@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Monitor de Motor 3D</title>
-<link rel="stylesheet" href="monitor.css?v=8">
+<link rel="stylesheet" href="monitor.css?v=9">
 </head>
 <body>
 
@@ -226,6 +226,34 @@
         <div><span class="eyebrow">Diagnóstico de eje</span><strong id="vAlign">Sin datos</strong></div>
         <div><span class="eyebrow">Inclinación X · Y · Z</span><strong id="vAng">—</strong></div>
       </div>
+
+      <div class="vib-extra">
+        <figure class="nivel" aria-label="Nivel de burbuja con la inclinación X e Y del sensor">
+          <svg viewBox="0 0 160 160">
+            <circle cx="80" cy="80" r="72" class="n-aro n-ext"/>
+            <circle cx="80" cy="80" r="48" class="n-aro"/>
+            <circle cx="80" cy="80" r="24" class="n-aro n-ok"/>
+            <path d="M80 8 V152 M8 80 H152" class="n-cruz"/>
+            <text x="148" y="76" class="n-eje" text-anchor="end">X</text>
+            <text x="86" y="18" class="n-eje">Y</text>
+            <text x="80" y="104" class="n-esc" text-anchor="middle">1°</text>
+            <text x="80" y="128" class="n-esc" text-anchor="middle">3°</text>
+            <text x="80" y="152" class="n-esc" text-anchor="middle">5°</text>
+            <circle cx="80" cy="80" r="10" class="n-burbuja" id="burbuja"/>
+          </svg>
+          <figcaption><span class="eyebrow">Nivel del sensor</span><b id="nivelTxt">—</b></figcaption>
+        </figure>
+        <div class="vstats">
+          <span class="eyebrow">Tiempo en cada zona · sesión</span>
+          <div class="zbar"><i class="zb-ok" id="zb1"></i><i class="zb-warn" id="zb2"></i><i class="zb-alarm" id="zb3"></i></div>
+          <div class="zleg"><span><i class="zb-ok"></i>Baja <b id="zp1">—</b></span><span><i class="zb-warn"></i>Media <b id="zp2">—</b></span><span><i class="zb-alarm"></i>Alta <b id="zp3">—</b></span></div>
+          <div class="vkv">
+            <div><small>Máxima de la sesión</small><b id="vMaxS">—</b></div>
+            <div><small>Eje dominante</small><b id="vDom">—</b></div>
+            <div><small>Desalineaciones</small><b id="vMisN">0</b></div>
+          </div>
+        </div>
+      </div>
     </article>
   </section>
 
@@ -363,6 +391,6 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="motor3d.js?v=1"></script>
 <script src="voz.js?v=1"></script>
-<script src="monitor.js?v=12"></script>
+<script src="monitor.js?v=13"></script>
 </body>
 </html>

@@ -94,6 +94,10 @@ function ingest(s){
     vibLv: fin(mag) ? vibLevel(st.vibEma) : null, tLv: tempLevel(s.T), cLv: curLevel(s.I, s.unit), mis: st.mis
   };
   rows.push(row);
+  // estadística de vibración de la sesión
+  if (row.vibLv) { st.zc[row.vibLv]++; st.vmaxS = Math.max(st.vmaxS, row.vf); }
+  if (row.mis && !st.misPrev) st.misN++;
+  st.misPrev = row.mis;
   // respaldo: si el ESP32 no envía lotes de 2 ms (firmware anterior), la onda usa la corriente de 10 Hz
   if (fin(s.I) && fin(s.t) && performance.now() - W.ultLote > 2500) onLote(s.t, 100, [s.I]);
   if (rows.length > MAX_ROWS) rows.splice(0, rows.length - MAX_ROWS);
@@ -259,6 +263,25 @@ function updateUI(r){
   $('vAlign').textContent = r.mis ? '⚠ Eje desalineado' : fin(r.ratio) ? (r.vibLv === 'baja' ? 'Correcto (vibración baja)' : 'Alineación correcta') : 'Sin datos';
   $('diag').dataset.lv = r.mis ? 'alarm' : fin(r.ratio) ? 'ok' : 'off';
   $('vAng').textContent = r.ang && r.ang.some(fin) ? r.ang.map(a => fin(a) ? a.toFixed(1) + '°' : '—').join(' · ') : '—';
+  // nivel de burbuja: anillos a 1°, 3° y 5° (escala por tramos para ver cambios pequeños)
+  const ax = r.ang?.[0], ay = r.ang?.[1], b = $('burbuja');
+  if (fin(ax) && fin(ay)) {
+    const mag = Math.hypot(ax, ay), rad = mag <= 1 ? mag * 24 : mag <= 3 ? 24 + (mag - 1) * 12 : Math.min(72, 48 + (mag - 3) * 12);
+    const k = mag > 0 ? rad / mag : 0;
+    b.setAttribute('cx', (80 + ax * k).toFixed(1)); b.setAttribute('cy', (80 - ay * k).toFixed(1));
+    b.dataset.lv = mag < 1 ? 'ok' : mag < 3 ? 'warn' : 'alarm';
+    $('nivelTxt').textContent = mag < 1 ? `Nivelado · ${mag.toFixed(1)}°` : `Inclinado ${mag.toFixed(1)}°`;
+  } else { b.setAttribute('cx', 80); b.setAttribute('cy', 80); b.dataset.lv = 'off'; $('nivelTxt').textContent = 'Sin dato'; }
+  // tiempo en cada zona, máximo y eje dominante
+  const tot = st.zc.baja + st.zc.media + st.zc.alta;
+  ['baja', 'media', 'alta'].forEach((z, i) => {
+    const p = tot ? st.zc[z] / tot * 100 : 0;
+    $('zb' + (i + 1)).style.width = p + '%'; $('zp' + (i + 1)).textContent = tot ? (p < 1 && p > 0 ? '<1' : p.toFixed(0)) + ' %' : '—';
+  });
+  $('vMaxS').textContent = tot ? st.vmaxS.toFixed(1) + ' mg' : '—';
+  const dom = st.ax.every(fin) && Math.max(...st.ax) > 0.5 ? 'XYZ'[st.ax.indexOf(Math.max(...st.ax))] : null;
+  $('vDom').textContent = dom ? `${dom} · ${dom === cfg.axial ? 'axial' : 'radial'}` : '—';
+  $('vMisN').textContent = st.misN;
 
 
   updateBanner(r);
@@ -831,6 +854,7 @@ function simStep(){
 function resetFilters(){
   st.vibEma = null; st.ax = [null,null,null]; st.misCnt = 0; st.mis = false;
   st.lv = {vib:null, temp:null, cur:null, mis:false}; st.peak = null; st.tmax = null;
+  st.zc = {baja:0, media:0, alta:0}; st.vmaxS = 0; st.misN = 0; st.misPrev = false;
 }
 function setMode(mode){
   st.mode = mode; resetFilters();

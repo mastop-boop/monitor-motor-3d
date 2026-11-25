@@ -285,3 +285,33 @@ body{background-image:radial-gradient(ellipse at 82% -12%,color-mix(in srgb,var(
 /* tres indicadores tras quitar el diagnóstico del ESP32 */
 .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media (max-width:760px){.kpis{grid-template-columns:minmax(0,1fr)}}
+
+/* ===== panel de vibración: nivel de burbuja y estadística de sesión ===== */
+.row2>.card:has(.vib-extra){display:flex;flex-direction:column}
+.vib-extra{flex:1;display:grid;grid-template-columns:minmax(150px,190px) minmax(0,1fr);gap:18px;align-items:center;margin-top:14px;
+  padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--panel-2)}
+.nivel{margin:0;display:grid;justify-items:center;gap:6px}
+.nivel svg{width:100%;max-width:170px;height:auto}
+.n-aro{fill:none;stroke:var(--line);stroke-width:1.5}
+.n-ext{fill:color-mix(in srgb,var(--accent) 6%,transparent);stroke:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.n-ok{fill:color-mix(in srgb,var(--ok) 10%,transparent);stroke:color-mix(in srgb,var(--ok) 50%,transparent)}
+.n-cruz{stroke:var(--line);stroke-width:1;stroke-dasharray:3 4}
+.n-eje{fill:var(--muted);font:700 10px system-ui}
+.n-esc{fill:var(--muted);font:600 8px system-ui;opacity:.8}
+.n-burbuja{fill:var(--c,var(--off));stroke:#fff;stroke-opacity:.6;stroke-width:1.5;transition:cx .4s,cy .4s,fill .3s;
+  filter:drop-shadow(0 0 6px color-mix(in srgb,var(--c,var(--off)) 70%,transparent))}
+.n-burbuja[data-lv=ok]{--c:var(--ok)}.n-burbuja[data-lv=warn]{--c:var(--warn)}.n-burbuja[data-lv=alarm]{--c:var(--alarm)}
+.nivel figcaption{text-align:center}
+.nivel b{font-size:14px;font-variant-numeric:tabular-nums}
+.vstats{display:grid;gap:10px;min-width:0}
+.zbar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--grid)}
+.zbar i{display:block;height:100%;width:0;transition:width .5s}
+.zb-ok{background:var(--ok)}.zb-warn{background:var(--warn)}.zb-alarm{background:var(--alarm)}
+.zleg{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.zleg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:0}
+.zleg b{color:var(--ink);font-variant-numeric:tabular-nums}
+.vkv{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.vkv div{padding:8px 10px;border-radius:9px;background:var(--panel);border:1px solid var(--line)}
+.vkv small{display:block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.vkv b{font-size:16px;font-variant-numeric:tabular-nums}
+@media(max-width:560px){.vib-extra{grid-template-columns:minmax(0,1fr)}.vkv{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
