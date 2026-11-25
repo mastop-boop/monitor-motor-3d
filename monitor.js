@@ -401,7 +401,7 @@ function drawChart(cv, o){
 const RAW_MS = 310000, DEC_MAX = 432000;
 let durGuardada = 3000; try { durGuardada = Number(localStorage.getItem('mc-capdur')) || 3000; } catch {}
 const W = {pts:[], dec:[], blk:null, cap:null, caps:[], quiet:0, lastT:-1, llegada:0, vista:'arranque', ven:1000, f:60, dur:durGuardada, avisoCap:0,
-  det:{base:NaN, ruido:0, sobre:0, tIni:0, ultimoFin:-Infinity}, ultLote:-Infinity, res:'—'};
+  det:{base:NaN, ruido:0, sobre:0, tIni:0, ultimoFin:-Infinity}, ultLote:-Infinity, res:'—', ema:NaN};
 function cerrarBloque(){ const b = W.blk; if (b && b.n) { W.dec.push({t:b.t, max:b.max, mean:b.sum / b.n}); if (W.dec.length > DEC_MAX) W.dec.splice(0, W.dec.length - DEC_MAX); } W.blk = null; }
 function onLote(t0, dt, vals){
   if (W.lastT >= 0 && t0 < W.lastT - 1000) {                        // reinicio del ESP32 / cambio de fuente
@@ -411,7 +411,10 @@ function onLote(t0, dt, vals){
   W.res = dt <= 10 ? `${dt} ms` : `${dt} ms (respaldo)`;
   vals.forEach((v, k) => {
     const t = t0 + k * dt; if (t <= W.lastT) return;
-    W.pts.push({t, v}); W.lastT = t;
+    // s: valor suavizado solo para dibujar (filtro de primer orden, τ ≈ 25 ms); v se conserva sin filtrar
+    const s = !fin(v) ? NaN : dt > 10 ? v : fin(W.ema) ? W.ema + (v - W.ema) * Math.min(1, dt / 25) : v;
+    if (fin(s)) W.ema = s;
+    W.pts.push({t, v, s}); W.lastT = t;
     if (fin(v)) {                                   // agregado de 100 ms para ventanas largas
       const bt = Math.floor(t / 100) * 100;
       if (!W.blk || W.blk.t !== bt) { cerrarBloque(); W.blk = {t:bt, max:v, sum:0, n:0}; }
@@ -458,7 +461,13 @@ function guardarCapturas(){
 function cargarCapturas(){
   try {
     const d = JSON.parse(localStorage.getItem('mc-capturas') || '[]');
-    W.caps = d.map(c => ({...c, ireg:c.ireg ?? NaN, pts:c.t.map((x, i) => ({t:c.trig + x, v:c.v[i] ?? NaN}))}));
+    W.caps = d.map(c => {
+      let e = NaN;
+      const pts = c.t.map((x, i) => { const v = c.v[i] ?? NaN, dt = i ? x - c.t[i - 1] : 2;
+        if (fin(v)) e = dt > 10 || !fin(e) ? v : e + (v - e) * Math.min(1, dt / 25);
+        return {t:c.trig + x, v, s:fin(v) ? e : NaN}; });
+      return {...c, ireg:c.ireg ?? NaN, pts};
+    });
   } catch { W.caps = []; }
 }
 function idxDesde(arr, t){ let a = 0, b = arr.length; while (a < b) { const m = (a + b) >> 1; arr[m].t < t ? a = m + 1 : b = m; } return a; }
@@ -501,8 +510,9 @@ function irmsEn(pts, t){                       // interpolación lineal del RMS 
   if (b < 0 || t < pts[0].t || t > pts[b].t) return NaN;
   while (b - a > 1) { const m = (a + b) >> 1; pts[m].t <= t ? a = m : b = m; }
   const p = pts[a], q = pts[b];
-  if (!fin(p.v) || !fin(q.v)) return NaN;
-  return q.t === p.t ? p.v : p.v + (q.v - p.v) * (t - p.t) / (q.t - p.t);
+  const pv = p.s ?? p.v, qv = q.s ?? q.v;              // se dibuja el valor suavizado si existe
+  if (!fin(pv) || !fin(qv)) return NaN;
+  return q.t === p.t ? pv : pv + (qv - pv) * (t - p.t) / (q.t - p.t);
 }
 function pasoBonito(r){ const e = Math.pow(10, Math.floor(Math.log10(r))), m = r / e; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * e; }
 function etiquetaT(ms, unidad){
@@ -553,7 +563,7 @@ function dibujarOnda(cv){
     }
   } else {
     // envolvente por columna: √2 · I_RMS máxima dentro de cada intervalo de píxel
-    const src = usarDec ? W.dec : pts, val = usarDec ? (p => p.max) : (p => p.v);
+    const src = usarDec ? W.dec : pts, val = usarDec ? (p => p.max) : (p => p.s ?? p.v);
     let i = idxDesde(src, a);
     for (let k = 0; k < cols; k++) {
       const tb = a + span * (k + 1) / cols; let m = -1;
