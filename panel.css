@@ -1,0 +1,143 @@
+/* ===== Tablero de una sola pantalla (sin desplazamiento vertical) =====
+   Se carga después de monitor.css y solo reorganiza la distribución. */
+html,body.tablero{height:100%;overflow:hidden}
+body.tablero{background-attachment:fixed}
+.tablero .app{height:100vh;height:100dvh;display:flex;flex-direction:column;min-height:0}
+
+/* cabecera compacta */
+.tablero .top{position:static}
+.tablero .bar{min-height:0;padding:6px 14px;gap:8px 14px}
+.tablero .brand b{font-size:15px}.tablero .brand small{font-size:11px}
+.tablero .escudos{padding:3px 8px;border-radius:9px}.tablero .escudos img{height:34px}.tablero .escudos i{height:24px}
+.tablero .controls{gap:6px}
+.tablero .btn{padding:6px 10px;font-size:12px}
+.tablero .seg button{padding:6px 10px;font-size:12px}
+.tablero .pill{font-size:11px;padding:4px 9px}
+.tablero .btn .count{min-width:18px;height:18px;font-size:11px;margin-left:4px;vertical-align:0}
+.tablero .demorow{padding:5px 14px;font-size:12px;gap:6px 14px}
+.tablero .demobar select{padding:3px 6px;font-size:12px}
+
+/* fila de estado: aviso + resumen */
+.tablero .estado{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:10px;padding:8px 12px 0}
+.tablero .banner{margin:0;padding:7px 12px;gap:10px}
+.tablero .banner b{font-size:13px}.tablero .banner span:not(.dot){font-size:11.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tablero .banner>div{min-width:0}
+.tablero .banner .dot{width:11px;height:11px}
+.tablero .resumen{margin:0;gap:8px}
+.tablero .resumen>div{padding:5px 9px;column-gap:8px}
+.tablero .resumen .ico{width:24px;height:24px;font-size:12px}
+.tablero .resumen small{font-size:9.5px}.tablero .resumen b{font-size:13px}
+
+/* grilla principal: 3 columnas × 2 filas que llenan el alto disponible */
+.tablero .grilla{flex:1;min-height:0;display:grid;gap:10px;padding:10px 12px;
+  grid-template-columns:minmax(210px,.8fr) minmax(0,1.3fr) minmax(0,1.9fr);
+  grid-template-rows:minmax(0,1.12fr) minmax(0,1fr)}
+.tablero .card{padding:9px 12px;display:flex;flex-direction:column;min-height:0;overflow:hidden;border-radius:12px}
+.tablero .chead{margin-bottom:6px;gap:6px}
+.tablero h2{font-size:14px}
+.tablero .eyebrow{font-size:9.5px;letter-spacing:.1em}
+.tablero .badge{font-size:9.5px;padding:2px 8px}
+
+/* columna 1: indicadores apilados */
+.tablero .kpis{grid-column:1;grid-row:1/3;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(3,minmax(0,1fr));gap:10px}
+.tablero .kpi{justify-content:space-between}
+.tablero .kpi .val{margin:4px 0;min-height:0}
+.tablero .kpi .val strong{font-size:clamp(24px,3.6vh,38px)}
+.tablero .spark{flex:1;min-height:18px;height:auto;margin-top:6px}
+.tablero .ksub{margin-top:4px;font-size:11px}
+.tablero .kico{width:17px;height:17px;font-size:10px;margin-right:5px}
+
+/* columna 2: motor y vibración */
+.tablero .c-motor{grid-column:2;grid-row:1}
+.tablero .caja-motor{flex:1;min-height:0;position:relative}
+.tablero .vista3d{height:100%;border-radius:10px}
+.tablero .motor{height:100%;width:100%}
+.tablero .thermo{margin-top:5px}
+.tablero .tbar{height:7px}.tablero .tbar i{height:16px;top:-4px}
+.tablero .tticks{height:14px;font-size:10px}.tablero .tticks span{top:2px}
+.tablero .ov{padding:3px 8px}.tablero .ov b{font-size:14px}.tablero .ov small{font-size:8.5px}
+.tablero .ov-t{top:10px;left:12px}.tablero .ov-v{top:10px;right:12px}.tablero .ov-i{top:10px}
+.tablero .ctl3d{right:10px;bottom:10px}.tablero .ctl3d .btn{padding:5px 9px}
+.tablero .ov-mis{bottom:44px;font-size:12px;padding:4px 10px}
+
+.tablero .c-vib{grid-column:2;grid-row:2}
+.tablero .vib-cuerpo{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:10px}
+.tablero .vib-izq{display:flex;flex-direction:column;justify-content:space-between;min-height:0;gap:6px}
+.tablero .scalebox{margin:0}
+.tablero .scale{height:16px}.tablero .scale .z{font-size:8.5px}
+.tablero .scalelbl{height:13px;font-size:9.5px}.tablero .scalelbl span{top:1px}
+.tablero .axes{gap:5px}
+.tablero .axis{grid-template-columns:62px 1fr 58px;gap:6px;font-size:11.5px}
+.tablero .track{height:7px}
+.tablero .diag{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:0;padding:6px 8px}
+.tablero .diag strong{font-size:12px}
+.tablero .vib-extra{margin:0;padding:8px;gap:8px;grid-template-columns:minmax(80px,.8fr) minmax(0,1fr);align-items:center}
+.tablero .nivel svg{max-width:120px}
+.tablero .nivel b{font-size:11.5px}
+.tablero .vstats{gap:6px}
+.tablero .zbar{height:10px}
+.tablero .zleg{font-size:10.5px;gap:3px 8px}
+.tablero .vkv{grid-template-columns:minmax(0,1fr);gap:4px}
+.tablero .vkv div{display:flex;justify-content:space-between;align-items:baseline;gap:6px;padding:4px 8px}
+.tablero .vkv small{font-size:9px}.tablero .vkv b{font-size:13px}
+
+/* columna 3: corriente y tendencias */
+.tablero .c-corr{grid-column:3;grid-row:1}
+.tablero .onda-ctrl{gap:5px 6px}
+.tablero .onda-ctrl label{font-size:11px}
+.tablero .onda-ctrl select{font-size:12px;padding:4px 6px}
+.tablero .cbox{flex:1;min-height:0;position:relative}
+.tablero .cbox .chart{position:absolute;inset:0;width:100%;height:100%!important}
+.tablero .cbox .chart[hidden]{display:none}
+.tablero .wstats{margin-top:6px;gap:6px}
+.tablero .wstats div{padding:4px 8px}
+.tablero .wstats strong{font-size:14px}
+.tablero .nota-onda{margin:4px 0 0;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tablero .c-tend{grid-column:3;grid-row:2;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;min-height:0}
+.tablero .legend{font-size:11px;gap:8px;margin:0}
+
+/* barra inferior */
+.tablero .pie{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px 16px;padding:6px 14px;
+  border-top:1px solid var(--line);background:var(--panel-2);font-size:12px}
+.tablero .pie .tgroup{gap:6px}
+.tablero .pie a.btn{text-decoration:none}
+
+/* cajones laterales (eventos y ajustes) */
+.velo{position:fixed;inset:0;background:#0008;z-index:40}
+.cajon{position:fixed;top:0;right:0;bottom:0;width:min(600px,94vw);z-index:41;overflow:auto;padding:16px 18px;
+  background:var(--panel);border-left:1px solid var(--line);box-shadow:-12px 0 40px #0007}
+.cajon[hidden],.velo[hidden]{display:none}
+.cajon .log{max-height:none}
+.cajon .institucion{margin:16px 0 0;padding:12px}
+.cajon .institucion img{height:58px}
+
+/* pantallas bajas: compactar más */
+@media (max-height:820px){
+  .tablero .kpi .val strong{font-size:24px}
+  .tablero .wstats{display:none}
+  .tablero .nota-onda{display:none}
+  .tablero .diag .eyebrow{font-size:8.5px}
+  .tablero .resumen small{display:none}
+  .tablero .hint3d{display:none}
+  .tablero .vib-extra{grid-template-columns:minmax(0,1fr);padding:6px 8px}
+  .tablero .vib-extra .nivel{display:none}
+  .tablero .vkv div{padding:3px 7px}
+  .tablero .diag{padding:4px 6px;gap:4px}.tablero .diag strong{font-size:11px}
+  .tablero .axes{gap:3px}.tablero .axis{font-size:11px}
+  .tablero .c-vib h2{font-size:13px}
+}
+@media (max-height:680px){ .tablero .vib-extra .nivel{display:none} .tablero .vib-extra{grid-template-columns:minmax(0,1fr)} .tablero .spark{display:none} }
+
+/* pantallas angostas (tablet/teléfono): el tablero no cabe en una pantalla y se permite desplazar */
+@media (max-width:1100px){
+  html,body.tablero{overflow:auto;height:auto}
+  .tablero .app{height:auto}
+  .tablero .estado{grid-template-columns:minmax(0,1fr)}
+  .tablero .grilla{grid-template-columns:minmax(0,1fr);grid-template-rows:none}
+  .tablero .kpis,.tablero .c-motor,.tablero .c-vib,.tablero .c-corr,.tablero .c-tend{grid-column:auto;grid-row:auto}
+  .tablero .kpis{grid-template-rows:none}
+  .tablero .caja-motor{height:340px;flex:none}
+  .tablero .cbox{height:280px;flex:none}
+  .tablero .c-tend{grid-template-columns:minmax(0,1fr)}
+  .tablero .vib-cuerpo{grid-template-columns:minmax(0,1fr)}
+}
