@@ -260,13 +260,6 @@ function updateUI(r){
   $('diag').dataset.lv = r.mis ? 'alarm' : fin(r.ratio) ? 'ok' : 'off';
   $('vAng').textContent = r.ang && r.ang.some(fin) ? r.ang.map(a => fin(a) ? a.toFixed(1) + '°' : '—').join(' · ') : '—';
 
-  // Firmware
-  const est = fin(r.estado) ? ESTADOS_FW[r.estado] : null;
-  $('vF').textContent = est || (r.origen === 'SIMULADO' ? 'Simulación' : 'Sin estado');
-  const fl = r.estado === 5 ? 'alarm' : r.estado === 7 || r.estado === 8 ? 'warn' : r.estado === 4 ? 'ok' : 'off';
-  setBadge($('bF'), r.origen, r.origen === 'SIMULADO' ? 'off' : 'ok'); $('kpiF').dataset.lv = fl;
-  $('vFase').textContent = fin(r.fase) ? FASES[r.fase] ?? '—' : '—';
-  $('vLazo').textContent = fin(r.V) ? `${(r.V * 1000 / 119).toFixed(2)} mA · ${r.V.toFixed(3)} V` : '—';
 
   updateBanner(r);
   $('nRows').textContent = rows.length.toLocaleString('es') + ' muestras';
@@ -398,7 +391,7 @@ function drawChart(cv, o){
    es i(t) = √2 · I_RMS(t) · sen(2π·f·t): amplitud medida, forma sinusoidal ideal.
    ============================================================ */
 // pts: muestras de 2 ms (últimos 5 min) · dec: bloques de 100 ms con máximo y media (hasta 12 h)
-const RAW_MS = 310000, DEC_MAX = 432000;
+const RAW_MS = 310000, DEC_MAX = 432000, MAX_CAPS = 60;
 let durGuardada = 3000; try { durGuardada = Number(localStorage.getItem('mc-capdur')) || 3000; } catch {}
 const W = {pts:[], dec:[], blk:null, cap:null, caps:[], quiet:0, lastT:-1, llegada:0, vista:'arranque', ven:1000, f:60, dur:durGuardada, avisoCap:0,
   det:{base:NaN, ruido:0, sobre:0, tIni:0, ultimoFin:-Infinity}, ultLote:-Infinity, res:'—', ema:NaN};
@@ -455,7 +448,11 @@ function guardarCapturas(){
   const datos = W.caps.map(c => ({ts:c.ts, trig:c.trig, fin:c.fin, dur:c.dur, auto:c.auto, imax:c.imax, ireg:c.ireg, tmax:c.tmax, res:c.res,
     t:c.pts.map(p => Math.round(p.t - c.trig)), v:c.pts.map(p => fin(p.v) ? +p.v.toFixed(3) : null)}));
   for (let n = datos.length; n > 0; n--) {
-    try { localStorage.setItem('mc-capturas', JSON.stringify(datos.slice(0, n))); return; } catch {}
+    try {
+      localStorage.setItem('mc-capturas', JSON.stringify(datos.slice(0, n)));
+      if (n < datos.length) logEvent('Corriente', 'Memoria llena', 'warn', `Memoria del navegador llena: se guardaron ${n} de ${datos.length} capturas. Descargue y borre las antiguas.`);
+      return;
+    } catch {}
   }
 }
 function cargarCapturas(){
@@ -478,7 +475,7 @@ function iniciarCaptura(t, auto){
 }
 function cerrarCaptura(){
   const c = W.cap; W.cap = null;
-  if (st.mode === 'demo') setConn('● Simulación', 'demo'); else status();
+  setConn(st.mode === 'demo' ? '● Simulación' : '● Recibiendo en vivo', st.mode === 'demo' ? 'demo' : 'live');
   const v = c.pts.map(p => p.v).filter(fin);
   if (!v.length) return;
   const reg = c.pts.filter(p => p.t >= c.fin - 500).map(p => p.v).filter(fin);
@@ -486,7 +483,7 @@ function cerrarCaptura(){
   c.tmax = c.pts.find(p => p.v === c.imax).t - c.trig;
   // el nivel de régimen pasa a ser la nueva línea base del detector (evita capturas repetidas con el motor en marcha)
   W.det.base = fin(c.ireg) ? c.ireg : v.at(-1); W.det.ruido = 0; W.det.sobre = 0; W.det.ultimoFin = c.fin;
-  W.caps.unshift(c); if (W.caps.length > 6) W.caps.pop();
+  W.caps.unshift(c); if (W.caps.length > MAX_CAPS) W.caps.pop();   // se conservan hasta 60; solo se borran a mano
   guardarCapturas();
   pintarCapturas(0);
   ultimoArranque = c;
@@ -495,8 +492,9 @@ function cerrarCaptura(){
     `${c.auto ? 'Arranque registrado' : 'Captura manual'}: I RMS máx ${c.imax.toFixed(2)} A a ${c.tmax.toFixed(0)} ms` + (fin(c.ireg) ? ` · régimen ${c.ireg.toFixed(2)} A` : ''));
 }
 function pintarCapturas(sel){
-  $('ondaCap').innerHTML = W.caps.length ? W.caps.map((c, i) => `<option value="${i}">${hms(c.ts)} · ${c.auto ? 'arranque' : 'manual'} · ${c.imax.toFixed(2)} A · ${c.res || ''}</option>`).join('') : '<option>Sin capturas</option>';
-  $('ondaCap').value = String(sel); $('dlOnda').disabled = !W.caps.length; mostrarStats(); dirty = true;
+  const fecha = ts => { const d = new Date(ts); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${hms(ts)}`; };
+  $('ondaCap').innerHTML = W.caps.length ? W.caps.map((c, i) => `<option value="${i}">${fecha(c.ts)} · ${c.auto ? 'arranque' : 'manual'} · ${c.imax.toFixed(2)} A · ${c.res || ''}</option>`).join('') : '<option>Sin capturas</option>';
+  $('ondaCap').value = String(sel); $('dlOnda').disabled = $('borrarCap').disabled = !W.caps.length; mostrarStats(); dirty = true;
 }
 function mostrarStats(){
   const c = W.caps[Number($('ondaCap').value) || 0];
@@ -675,14 +673,15 @@ function drawAll(){
   // suavizado (media móvil ≈ 2 s) y rango vertical mínimo para que el ruido no parezca una variación real
   minigrafica($('spI'), ult, r => r.I, C.ci, {k:20, rango:1.0});
   minigrafica($('spT'), ult, r => r.T, C.ct, {k:30, rango:4});
-  minigrafica($('spV'), ult, r => r.vf, C.cx, {k:5, rango:10});
+  minigrafica($('spV'), ult, r => r.vf, C.cx, {k:3, rango:5});
 }
 function mediaMovil(v, k){
   if (k <= 1) return v;
   const out = new Array(v.length); let s = 0, n = 0;
   for (let i = 0; i < v.length; i++) {                 // media móvil centrada que ignora huecos
-    if (i === 0) for (let j = 0; j <= Math.min(v.length - 1, k >> 1); j++) if (fin(v[j])) { s += v[j]; n++; }
-    else {
+    if (i === 0) {
+      for (let j = 0; j <= Math.min(v.length - 1, k >> 1); j++) if (fin(v[j])) { s += v[j]; n++; }
+    } else {
       const ent = i + (k >> 1), sal = i - (k >> 1) - 1;
       if (ent < v.length && fin(v[ent])) { s += v[ent]; n++; }
       if (sal >= 0 && fin(v[sal])) { s -= v[sal]; n--; }
@@ -862,6 +861,11 @@ $('capDur').onchange = e => { W.dur = Number(e.target.value); try { localStorage
 $('ondaF').onchange = e => { W.f = Number(e.target.value); dirty = true; };
 $('ondaCap').onchange = () => { mostrarStats(); dirty = true; };
 $('capturar').onclick = () => { if (W.lastT >= 0 && !W.cap) iniciarCaptura(W.lastT, false); };
+$('borrarCap').onclick = () => {
+  const i = Number($('ondaCap').value) || 0, c = W.caps[i]; if (!c) return;
+  if (!confirm(`¿Borrar definitivamente la captura del ${new Date(c.ts).toLocaleString('es')} (${c.imax.toFixed(2)} A)? Descárguela antes si la necesita.`)) return;
+  W.caps.splice(i, 1); guardarCapturas(); pintarCapturas(0);
+};
 $('dlOnda').onclick = () => {
   const c = W.caps[Number($('ondaCap').value) || 0]; if (!c) return;
   const out = ['﻿t_ms;I_RMS_medida_A;i_equivalente_A;nota'];
@@ -887,7 +891,7 @@ $('clearBtn').onclick = () => {
   if (!rows.length && !events.length) return;
   if (!confirm('¿Borrar todas las muestras y eventos de esta sesión? Descargue los datos antes si los necesita.')) return;
   rows.length = 0; events.length = 0; st.missing = 0; resetFilters(); renderLog();
-  W.pts.length = 0; W.dec.length = 0; W.blk = null; W.caps.length = 0; try { localStorage.removeItem('mc-capturas'); } catch {} W.cap = null; W.lastT = -1; pintarCapturas(0);
+  W.pts.length = 0; W.dec.length = 0; W.blk = null; W.cap = null; W.lastT = -1;   // las capturas de arranque se conservan
   $('nRows').textContent = '0 muestras'; $('nLoss').textContent = ''; ['dlCsv','dlJson'].forEach(id => $(id).disabled = true); dirty = true;
 };
 function applyTheme(t){ document.documentElement.dataset.theme = t; store.set('mc-theme', t); readColors(); dirty = true; }
