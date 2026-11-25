@@ -14,7 +14,10 @@ const MAX_ROWS = 300000;               // ~8 h a 10 muestras/s
 const ESTADOS_FW = ['Calibrando','En reposo','Sin referencia','Fase incierta','Motor normal (estimado)',
   'Posible desalineación','Tomando referencia','Revisar corriente','Sin ADXL345'];
 const FASES = ['Indeterminada','Estrella (Y)','Delta (Δ)'];
-const DEF = {vibMed:10, vibAlt:25, axial:'X', ratio:0.5, tWarn:60, tHigh:75, tCrit:90, iNom:2, sound:false};
+const DEF = {vibMed:10, vibAlt:25, axial:'X', ratio:0.5, tWarn:60, tHigh:75, tCrit:90, iNom:2, iZona:0.10, sound:false};
+// Zona muerta de corriente: por debajo de este valor el motor se considera apagado y se muestra 0 A
+// (elimina el residuo del lazo 4-20 mA en reposo). El valor medido sin corte se conserva en la descarga CSV.
+const corteI = v => fin(v) && v < (fin(cfg.iZona) ? cfg.iZona : DEF.iZona) ? 0 : v;
 
 const store = {
   get(k){ try { return localStorage.getItem(k); } catch { return null; } },
@@ -65,6 +68,7 @@ function setBadge(el, txt, lv){ el.textContent = txt; el.className = 'badge lv-'
 /* ---------- ingesta común ---------- */
 function ingest(s){
   const now = Date.now();
+  s.Imed = s.I; s.I = corteI(s.I); s.Ipk = corteI(s.Ipk);   // motor apagado → 0 A
   const xyz = [s.x, s.y, s.z];
   const mag = xyz.every(fin) ? Math.hypot(...xyz) : null;
   if (fin(mag)) {
@@ -90,7 +94,7 @@ function ingest(s){
   const row = {
     ts:now, origen:s.origen, sesion:s.sess, seq:s.seq, tms:s.t,
     x:s.x, y:s.y, z:s.z, mag, vf: fin(mag) ? st.vibEma : null, ratio,
-    I:s.I, Ipk:s.Ipk, unit:s.unit, T:s.T, V:s.V, ang:s.ang, fase:s.fase, estado:s.estado,
+    I:s.I, Imed:s.Imed, Ipk:s.Ipk, unit:s.unit, T:s.T, V:s.V, ang:s.ang, fase:s.fase, estado:s.estado,
     vibLv: fin(mag) ? vibLevel(st.vibEma) : null, tLv: tempLevel(s.T), cLv: curLevel(s.I, s.unit), mis: st.mis
   };
   rows.push(row);
@@ -420,6 +424,7 @@ const W = {pts:[], dec:[], blk:null, cap:null, caps:[], quiet:0, lastT:-1, llega
   det:{base:NaN, ruido:0, sobre:0, tIni:0, ultimoFin:-Infinity}, ultLote:-Infinity, res:'—', ema:NaN};
 function cerrarBloque(){ const b = W.blk; if (b && b.n) { W.dec.push({t:b.t, max:b.max, mean:b.sum / b.n}); if (W.dec.length > DEC_MAX) W.dec.splice(0, W.dec.length - DEC_MAX); } W.blk = null; }
 function onLote(t0, dt, vals){
+  vals = vals.map(corteI);                                   // misma zona muerta para la onda y las capturas
   if (W.lastT >= 0 && t0 < W.lastT - 1000) {                        // reinicio del ESP32 / cambio de fuente
     W.pts.length = 0; W.dec.length = 0; W.blk = null; W.quiet = 0; W.lastT = -1; W.cap = null;
     W.det = {base:NaN, ruido:0, sobre:0, tIni:0, ultimoFin:-Infinity};
@@ -838,7 +843,7 @@ function simStep(){
       const e = tt - sim.tOn;
       sim.Ic = P.I * (1 + 0.02 * Math.sin(tt / 700)) + 5 * P.I * Math.exp(-e / 160) * (1 - Math.exp(-e / 10)) + gauss() * 0.02;
     }
-    lote.push(Math.max(0, sim.Ic) + 0.55 + gauss() * 0.03);   // desplazamiento en reposo como el JXK-10 real (~0,55 A)
+    lote.push(Math.max(0, Math.max(0, sim.Ic) + 0.03 + gauss() * 0.015));   // residuo en reposo como el JXK-10 real (~0,02 A)
   }
   W.ultLote = performance.now(); onLote(sim.t - 100, 2, lote);
   const I = lote.reduce((a, b) => a + b, 0) / lote.length;
@@ -931,8 +936,9 @@ form.addEventListener('change', () => {
     next[k] = i.type === 'checkbox' ? i.checked : i.tagName === 'SELECT' ? i.value : Number(i.value);
   });
   const msg = $('cfgMsg');
-  const nums = ['vibMed','vibAlt','ratio','tWarn','tHigh','tCrit','iNom'];
+  const nums = ['vibMed','vibAlt','ratio','tWarn','tHigh','tCrit','iNom','iZona'];
   let err = nums.some(k => !fin(next[k])) ? 'Complete todos los campos numéricos.' :
+    !(next.iZona >= 0 && next.iZona <= 2) ? 'La zona muerta de corriente debe estar entre 0 y 2 A.' :
     !(next.vibMed > 0 && next.vibMed < next.vibAlt) ? 'La vibración media debe ser mayor que 0 y menor que la alta.' :
     !(next.tWarn < next.tHigh && next.tHigh < next.tCrit) ? 'Las temperaturas deben cumplir: precaución < alta < crítica.' :
     !(next.ratio > 0) ? 'La relación axial/radial debe ser mayor que 0.' : '';
@@ -955,12 +961,12 @@ const c = (v,d=3) => fin(v) ? String(+v.toFixed(d)) : '';
 $('dlCsv').onclick = () => {
   const head = ['fecha_hora_local','timestamp_ms','origen','sesion','secuencia','t_dispositivo_ms',
     'vib_X_mg','vib_Y_mg','vib_Z_mg','vib_global_mg','vib_global_filtrada_mg','nivel_vibracion','relacion_axial_radial','eje_desalineado',
-    'corriente','unidad_corriente','corriente_pico','estado_corriente','temperatura_C','nivel_temperatura',
+    'corriente','corriente_medida_sin_zona_muerta','unidad_corriente','corriente_pico','estado_corriente','temperatura_C','nivel_temperatura',
     'GPIO4_V','inclin_X_deg','inclin_Y_deg','inclin_Z_deg','fase_estimada','estado_firmware'];
   const out = ['﻿' + head.join(';')];
   for (const r of rows) out.push([stamp(r.ts), r.ts, r.origen, r.sesion, r.seq ?? '', r.tms ?? '',
     c(r.x), c(r.y), c(r.z), c(r.mag), c(r.vf), r.vibLv ? VIB[r.vibLv][0] : '', c(r.ratio), r.mis ? 'SI' : 'NO',
-    c(r.I), r.unit, c(r.Ipk), r.cLv ? CUR[r.cLv][0] : '', c(r.T,2), r.tLv ? TMP[r.tLv][0] : '',
+    c(r.I), c(r.Imed), r.unit, c(r.Ipk), r.cLv ? CUR[r.cLv][0] : '', c(r.T,2), r.tLv ? TMP[r.tLv][0] : '',
     c(r.V), c(r.ang?.[0],2), c(r.ang?.[1],2), c(r.ang?.[2],2),
     fin(r.fase) ? FASES[r.fase] ?? '' : '', fin(r.estado) ? ESTADOS_FW[r.estado] ?? '' : ''].join(';'));
   download(`motor_datos_${fileStamp()}.csv`, out.join('\r\n') + '\r\n', 'text/csv;charset=utf-8');

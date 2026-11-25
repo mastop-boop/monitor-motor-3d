@@ -378,6 +378,7 @@
     <fieldset>
       <legend>Corriente y avisos</legend>
       <label>Corriente nominal (A)<input type="number" step="0.1" min="0" data-k="iNom"></label>
+      <label>Zona muerta: motor apagado por debajo de (A)<input type="number" step="0.01" min="0" max="2" data-k="iZona"></label>
       <label class="check"><input type="checkbox" data-k="sound"> Alarma sonora en nivel alto/crítico</label>
     </fieldset>
     <p class="note" id="cfgMsg">Valores de referencia para laboratorio. Ajústelos con los datos de placa del motor y la norma aplicable (p. ej. clase de aislamiento IEC 60034-1, severidad ISO 10816 / 20816).</p>
@@ -397,7 +398,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="motor3d.js?v=1"></script>
 <script src="voz.js?v=1"></script>
-<script src="monitor.js?v=13"></script>
+<script src="monitor.js?v=14"></script>
 <script>
 /* cajones laterales del tablero */
 (() => {
