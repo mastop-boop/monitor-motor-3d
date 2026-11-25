@@ -94,6 +94,8 @@ function ingest(s){
     vibLv: fin(mag) ? vibLevel(st.vibEma) : null, tLv: tempLevel(s.T), cLv: curLevel(s.I, s.unit), mis: st.mis
   };
   rows.push(row);
+  // respaldo: si el ESP32 no envía lotes de 2 ms (firmware anterior), la onda usa la corriente de 10 Hz
+  if (fin(s.I) && fin(s.t) && performance.now() - W.ultLote > 2500) onLote(s.t, 100, [s.I]);
   if (rows.length > MAX_ROWS) rows.splice(0, rows.length - MAX_ROWS);
   st.lastAt = now;
   transitions(row);
@@ -398,10 +400,15 @@ function drawChart(cv, o){
 // pts: muestras de 2 ms (últimos 5 min) · dec: bloques de 100 ms con máximo y media (hasta 12 h)
 const RAW_MS = 310000, DEC_MAX = 432000;
 let durGuardada = 3000; try { durGuardada = Number(localStorage.getItem('mc-capdur')) || 3000; } catch {}
-const W = {pts:[], dec:[], blk:null, cap:null, caps:[], quiet:0, lastT:-1, llegada:0, vista:'arranque', ven:1000, f:60, dur:durGuardada, avisoCap:0};
+const W = {pts:[], dec:[], blk:null, cap:null, caps:[], quiet:0, lastT:-1, llegada:0, vista:'arranque', ven:1000, f:60, dur:durGuardada, avisoCap:0,
+  det:{base:NaN, ruido:0, sobre:0, tIni:0, ultimoFin:-Infinity}, ultLote:-Infinity, res:'—'};
 function cerrarBloque(){ const b = W.blk; if (b && b.n) { W.dec.push({t:b.t, max:b.max, mean:b.sum / b.n}); if (W.dec.length > DEC_MAX) W.dec.splice(0, W.dec.length - DEC_MAX); } W.blk = null; }
 function onLote(t0, dt, vals){
-  if (W.lastT >= 0 && t0 < W.lastT - 1000) { W.pts.length = 0; W.dec.length = 0; W.blk = null; W.quiet = 0; W.lastT = -1; W.cap = null; }   // reinicio del ESP32 / cambio de fuente
+  if (W.lastT >= 0 && t0 < W.lastT - 1000) {                        // reinicio del ESP32 / cambio de fuente
+    W.pts.length = 0; W.dec.length = 0; W.blk = null; W.quiet = 0; W.lastT = -1; W.cap = null;
+    W.det = {base:NaN, ruido:0, sobre:0, tIni:0, ultimoFin:-Infinity};
+  }
+  W.res = dt <= 10 ? `${dt} ms` : `${dt} ms (respaldo)`;
   vals.forEach((v, k) => {
     const t = t0 + k * dt; if (t <= W.lastT) return;
     W.pts.push({t, v}); W.lastT = t;
@@ -410,9 +417,7 @@ function onLote(t0, dt, vals){
       if (!W.blk || W.blk.t !== bt) { cerrarBloque(); W.blk = {t:bt, max:v, sum:0, n:0}; }
       W.blk.max = Math.max(W.blk.max, v); W.blk.sum += v; W.blk.n++;
     }
-    // disparo automático: motor quieto ≥ 200 ms y la corriente supera 0,6 A
-    if (fin(v) && v < 0.3) W.quiet += dt; else if (fin(v) && v >= 0.6 && W.quiet >= 200 && !W.cap) iniciarCaptura(t, true);
-    if (fin(v) && v >= 0.3) W.quiet = 0;
+    if (fin(v) && !W.cap) detectarArranque(t, v, dt);
     if (W.cap) { if (t <= W.cap.fin) W.cap.pts.push({t, v}); else cerrarCaptura(); }
   });
   if (W.pts.length && W.pts[0].t < W.lastT - RAW_MS) W.pts.splice(0, idxDesde(W.pts, W.lastT - RAW_MS));
@@ -422,10 +427,44 @@ function onLote(t0, dt, vals){
   }
   W.llegada = performance.now(); dirty = true;
 }
+/* Detector de arranque adaptativo.
+   El transmisor marca ~0,5 A en reposo (desplazamiento del lazo 4-20 mA), por eso no se usa un umbral fijo:
+   se sigue la línea base y su ruido, y se dispara ante un escalón sostenido por encima de ella. */
+function detectarArranque(t, v, dt){
+  const D = W.det;
+  if (!fin(D.base)) { D.base = v; D.ruido = 0; return; }
+  const umbral = D.base + Math.max(0.4, 5 * D.ruido, 0.3 * D.base);
+  if (v > umbral) {
+    if (!D.sobre) D.tIni = t;
+    D.sobre += dt;
+    const minimo = dt <= 10 ? 20 : 150;                   // 20 ms con lotes de 2 ms · 2 muestras con datos de 10 Hz
+    if (D.sobre >= minimo && t - D.ultimoFin > 3000) { iniciarCaptura(D.tIni, true); D.sobre = 0; }
+    else if (D.sobre > 3000) { D.base = v; D.sobre = 0; }  // nuevo nivel estable sin captura: se adopta como base
+  } else {
+    D.sobre = 0;
+    const k = Math.min(1, dt / 1000);                     // línea base con constante de tiempo ≈ 1 s
+    D.base += (v - D.base) * k;
+    D.ruido += (Math.abs(v - D.base) - D.ruido) * Math.min(1, dt / 2000);
+  }
+}
+/* capturas guardadas en este navegador (sobreviven a recargas) */
+function guardarCapturas(){
+  const datos = W.caps.map(c => ({ts:c.ts, trig:c.trig, fin:c.fin, dur:c.dur, auto:c.auto, imax:c.imax, ireg:c.ireg, tmax:c.tmax, res:c.res,
+    t:c.pts.map(p => Math.round(p.t - c.trig)), v:c.pts.map(p => fin(p.v) ? +p.v.toFixed(3) : null)}));
+  for (let n = datos.length; n > 0; n--) {
+    try { localStorage.setItem('mc-capturas', JSON.stringify(datos.slice(0, n))); return; } catch {}
+  }
+}
+function cargarCapturas(){
+  try {
+    const d = JSON.parse(localStorage.getItem('mc-capturas') || '[]');
+    W.caps = d.map(c => ({...c, ireg:c.ireg ?? NaN, pts:c.t.map((x, i) => ({t:c.trig + x, v:c.v[i] ?? NaN}))}));
+  } catch { W.caps = []; }
+}
 function idxDesde(arr, t){ let a = 0, b = arr.length; while (a < b) { const m = (a + b) >> 1; arr[m].t < t ? a = m + 1 : b = m; } return a; }
 function iniciarCaptura(t, auto){
-  const pre = 10;
-  W.cap = {trig:t, ini:t - pre, fin:t + W.dur, dur:W.dur, auto, ts:Date.now(), pts:W.pts.slice(idxDesde(W.pts, t - pre)).filter(p => p.t <= t)};
+  const pre = 60;                                     // incluye el inicio de la subida
+  W.cap = {trig:t, ini:t - pre, fin:t + W.dur, dur:W.dur, auto, res:W.res, ts:Date.now(), pts:W.pts.slice(idxDesde(W.pts, t - pre)).filter(p => p.t <= W.lastT)};
   setConn(auto ? '● Arranque detectado · capturando corriente' : '● Capturando corriente', 'live');
 }
 function cerrarCaptura(){
@@ -436,7 +475,10 @@ function cerrarCaptura(){
   const reg = c.pts.filter(p => p.t >= c.fin - 500).map(p => p.v).filter(fin);
   c.imax = v.reduce((m, x) => x > m ? x : m, -Infinity); c.ireg = reg.length ? reg.reduce((a, b) => a + b, 0) / reg.length : NaN;
   c.tmax = c.pts.find(p => p.v === c.imax).t - c.trig;
+  // el nivel de régimen pasa a ser la nueva línea base del detector (evita capturas repetidas con el motor en marcha)
+  W.det.base = fin(c.ireg) ? c.ireg : v.at(-1); W.det.ruido = 0; W.det.sobre = 0; W.det.ultimoFin = c.fin;
   W.caps.unshift(c); if (W.caps.length > 6) W.caps.pop();
+  guardarCapturas();
   pintarCapturas(0);
   ultimoArranque = c;
   if (c.auto) window.Voz?.evento('Corriente', 'Arranque', 'ok', c);
@@ -444,7 +486,7 @@ function cerrarCaptura(){
     `${c.auto ? 'Arranque registrado' : 'Captura manual'}: I RMS máx ${c.imax.toFixed(2)} A a ${c.tmax.toFixed(0)} ms` + (fin(c.ireg) ? ` · régimen ${c.ireg.toFixed(2)} A` : ''));
 }
 function pintarCapturas(sel){
-  $('ondaCap').innerHTML = W.caps.length ? W.caps.map((c, i) => `<option value="${i}">${hms(c.ts)} · ${c.auto ? 'arranque' : 'manual'} · ${c.imax.toFixed(2)} A</option>`).join('') : '<option>Sin capturas</option>';
+  $('ondaCap').innerHTML = W.caps.length ? W.caps.map((c, i) => `<option value="${i}">${hms(c.ts)} · ${c.auto ? 'arranque' : 'manual'} · ${c.imax.toFixed(2)} A · ${c.res || ''}</option>`).join('') : '<option>Sin capturas</option>';
   $('ondaCap').value = String(sel); $('dlOnda').disabled = !W.caps.length; mostrarStats(); dirty = true;
 }
 function mostrarStats(){
@@ -494,7 +536,7 @@ function dibujarOnda(cv){
   } else {
     const c = W.caps[Number($('ondaCap').value) || 0] || W.cap;
     if (!c) return vacio(g, w, h, fs, 'Esperando un arranque del motor… (o pulse «Capturar ahora»)');
-    pts = c.pts; a = c.trig - 10; b = W.ven === Infinity ? c.fin : Math.min(c.fin, c.trig + W.ven); ref = c.trig; rel = c.trig;
+    pts = c.pts; a = Math.max(c.pts[0]?.t ?? c.trig - 10, c.trig - 60); b = W.ven === Infinity ? c.fin : Math.min(c.fin, c.trig + W.ven); ref = c.trig; rel = c.trig;
   }
   const span = b - a;
   g.font = `${fs}px system-ui, sans-serif`;
@@ -620,18 +662,34 @@ function drawAll(){
   $('iStats').textContent = fin(iMin) ? `mín ${iMin.toFixed(2)} · máx ${iMax.toFixed(2)} ${pct ? '%' : 'A'}` : '';
   // minigráficas del último minuto en las tarjetas
   const ult = rows.slice(lowerBound(rows, Date.now() - 60000));
-  minigrafica($('spI'), ult, r => r.I, C.ci);
-  minigrafica($('spT'), ult, r => r.T, C.ct);
-  minigrafica($('spV'), ult, r => r.vf, C.cx);
+  // suavizado (media móvil ≈ 2 s) y rango vertical mínimo para que el ruido no parezca una variación real
+  minigrafica($('spI'), ult, r => r.I, C.ci, {k:20, rango:1.0});
+  minigrafica($('spT'), ult, r => r.T, C.ct, {k:30, rango:4});
+  minigrafica($('spV'), ult, r => r.vf, C.cx, {k:5, rango:10});
 }
-function minigrafica(cv, data, get, color){
+function mediaMovil(v, k){
+  if (k <= 1) return v;
+  const out = new Array(v.length); let s = 0, n = 0;
+  for (let i = 0; i < v.length; i++) {                 // media móvil centrada que ignora huecos
+    if (i === 0) for (let j = 0; j <= Math.min(v.length - 1, k >> 1); j++) if (fin(v[j])) { s += v[j]; n++; }
+    else {
+      const ent = i + (k >> 1), sal = i - (k >> 1) - 1;
+      if (ent < v.length && fin(v[ent])) { s += v[ent]; n++; }
+      if (sal >= 0 && fin(v[sal])) { s -= v[sal]; n--; }
+    }
+    out[i] = fin(v[i]) && n ? s / n : NaN;
+  }
+  return out;
+}
+function minigrafica(cv, data, get, color, op = {}){
   const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
   if (!w || !h) return;
   if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
   const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
-  const v = data.map(get), ok = v.filter(fin);
+  const v = mediaMovil(data.map(get), op.k || 1), ok = v.filter(fin);
   if (ok.length < 2) return;
-  let lo = Math.min(...ok), hi = Math.max(...ok); if (hi - lo < 1e-6) { lo -= 1; hi += 1; }
+  let lo = Math.min(...ok), hi = Math.max(...ok);
+  const falta = (op.rango || 1e-6) - (hi - lo); if (falta > 0) { lo -= falta / 2; hi += falta / 2; }
   const t0 = Date.now() - 60000, X = t => (t - t0) / 60000 * w, Y = x => h - 3 - (x - lo) / (hi - lo) * (h - 6);
   const step = Math.max(1, Math.floor(data.length / w));
   g.beginPath(); let pen = false, x0 = 0, xl = 0;
@@ -718,7 +776,7 @@ function parseLote(s){
   if (f.length < 5 || !/^[a-f0-9]{8}$/.test(f[0])) return;
   const t0 = Number(f[2]), dt = Number(f[3]);
   if (!fin(t0) || !(dt > 0)) return;
-  onLote(t0, dt, f.slice(4).map(v => /nan|inf/i.test(v) || v === '' ? NaN : Number(v)));
+  W.ultLote = performance.now(); onLote(t0, dt, f.slice(4).map(v => /nan|inf/i.test(v) || v === '' ? NaN : Number(v)));
 }
 
 /* ---------- simulador (modo Demo) ---------- */
@@ -748,9 +806,9 @@ function simStep(){
       const e = tt - sim.tOn;
       sim.Ic = P.I * (1 + 0.02 * Math.sin(tt / 700)) + 5 * P.I * Math.exp(-e / 160) * (1 - Math.exp(-e / 10)) + gauss() * 0.02;
     }
-    lote.push(Math.max(0, sim.Ic));
+    lote.push(Math.max(0, sim.Ic) + 0.55 + gauss() * 0.03);   // desplazamiento en reposo como el JXK-10 real (~0,55 A)
   }
-  onLote(sim.t - 100, 2, lote);
+  W.ultLote = performance.now(); onLote(sim.t - 100, 2, lote);
   const I = lote.reduce((a, b) => a + b, 0) / lote.length;
   sim.v = sim.v.map((v,i) => v + (P.v[i] - v) * 0.1);
   const xyz = sim.v.map(v => v > 0.05 ? Math.max(0, v * (1 + 0.12 * gauss())) : 0);
@@ -771,6 +829,7 @@ function setMode(mode){
   $('demoBar').hidden = mode !== 'demo';
   clearInterval(sim.timer); sim.timer = null;
   W.pts.length = 0; W.dec.length = 0; W.blk = null; W.lastT = -1; W.quiet = 0; W.cap = null;
+  W.det = {base:NaN, ruido:0, sobre:0, tIni:0, ultimoFin:-Infinity}; W.ultLote = -Infinity;
   if (mode === 'demo') { mqttStop(); setConn('● Simulación', 'demo'); sim.forzarParo = sim.t + 800; sim.timer = setInterval(simStep, 100); }
   else { st.lastAt = 0; mqttConnect(); }
 }
@@ -818,7 +877,7 @@ $('clearBtn').onclick = () => {
   if (!rows.length && !events.length) return;
   if (!confirm('¿Borrar todas las muestras y eventos de esta sesión? Descargue los datos antes si los necesita.')) return;
   rows.length = 0; events.length = 0; st.missing = 0; resetFilters(); renderLog();
-  W.pts.length = 0; W.dec.length = 0; W.blk = null; W.caps.length = 0; W.cap = null; W.lastT = -1; pintarCapturas(0);
+  W.pts.length = 0; W.dec.length = 0; W.blk = null; W.caps.length = 0; try { localStorage.removeItem('mc-capturas'); } catch {} W.cap = null; W.lastT = -1; pintarCapturas(0);
   $('nRows').textContent = '0 muestras'; $('nLoss').textContent = ''; ['dlCsv','dlJson'].forEach(id => $(id).disabled = true); dirty = true;
 };
 function applyTheme(t){ document.documentElement.dataset.theme = t; store.set('mc-theme', t); readColors(); dirty = true; }
@@ -929,6 +988,7 @@ setInterval(() => {
 
 /* ---------- inicio ---------- */
 applyTheme(store.get('mc-theme') || 'dark');
+cargarCapturas(); pintarCapturas(0); if (W.caps[0]) ultimoArranque = W.caps[0];
 fillCfg(); buildThermo(); buildScale(); renderLog();
 addEventListener('resize', () => dirty = true);
 requestAnimationFrame(frame);
