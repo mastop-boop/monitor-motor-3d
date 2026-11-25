@@ -511,6 +511,7 @@ function cerrarCaptura(){
   c.tmax = c.pts.find(p => p.v === c.imax).t - c.trig;
   // el nivel de régimen pasa a ser la nueva línea base del detector (evita capturas repetidas con el motor en marcha)
   W.det.base = fin(c.ireg) ? c.ireg : v.at(-1); W.det.ruido = 0; W.det.sobre = 0; W.det.ultimoFin = c.fin;
+  W.vacio = false;
   W.caps.unshift(c); if (W.caps.length > MAX_CAPS) W.caps.pop();   // se conservan hasta 60; solo se borran a mano
   guardarCapturas();
   pintarCapturas(0);
@@ -525,7 +526,7 @@ function pintarCapturas(sel){
   $('ondaCap').value = String(sel); $('dlOnda').disabled = $('borrarCap').disabled = !W.caps.length; mostrarStats(); dirty = true;
 }
 function mostrarStats(){
-  const c = W.caps[Number($('ondaCap').value) || 0];
+  const c = W.vacio ? null : W.caps[Number($('ondaCap').value) || 0];
   $('wPico').textContent = c ? (Math.SQRT2 * c.imax).toFixed(2) + ' A' : '—';
   $('wMax').textContent = c ? `${c.imax.toFixed(2)} A · ${c.tmax.toFixed(0)} ms` : '—';
   $('wReg').textContent = c && fin(c.ireg) ? c.ireg.toFixed(2) + ' A' : '—';
@@ -570,8 +571,9 @@ function dibujarOnda(cv){
     pts = W.pts; ref = 0; rel = b;
     usarDec = a < W.pts[0].t - 200;                // fuera del historial de 2 ms: bloques de 100 ms
   } else {
-    const c = W.caps[Number($('ondaCap').value) || 0] || W.cap;
-    if (!c) return vacio(g, w, h, fs, 'Esperando un arranque del motor… (o pulse «Capturar ahora»)');
+    // tras «Reiniciar» se muestra solo la captura en curso; las guardadas siguen en la lista
+    const c = W.vacio ? W.cap : (W.caps[Number($('ondaCap').value) || 0] || W.cap);
+    if (!c) return vacio(g, w, h, fs, W.vacio ? 'Listo · esperando un nuevo arranque del motor…' : 'Esperando un arranque del motor… (o pulse «Capturar ahora»)');
     pts = c.pts; a = Math.max(c.pts[0]?.t ?? c.trig - 10, c.trig - 60); b = W.ven === Infinity ? c.fin : Math.min(c.fin, c.trig + W.ven); ref = c.trig; rel = c.trig;
   }
   const span = b - a;
@@ -888,7 +890,17 @@ $('ondaVen').onchange = e => { W.ven = e.target.value === 'all' ? Infinity : Num
 $('capDur').value = String(W.dur);
 $('capDur').onchange = e => { W.dur = Number(e.target.value); try { localStorage.setItem('mc-capdur', W.dur); } catch {} };
 $('ondaF').onchange = e => { W.f = Number(e.target.value); dirty = true; };
-$('ondaCap').onchange = () => { mostrarStats(); dirty = true; };
+$('ondaCap').onchange = () => { W.vacio = false; mostrarStats(); dirty = true; };
+// Reiniciar: cancela la captura en curso, rearma el detector y deja la gráfica lista para un nuevo arranque.
+// Las capturas ya guardadas no se borran (se pueden volver a ver desde la lista).
+$('rearmar').onclick = () => {
+  W.cap = null; W.vacio = true;
+  W.det = {base:NaN, ruido:0, sobre:0, tIni:0, ultimoFin:-Infinity};
+  setConn(st.mode === 'demo' ? '● Simulación' : '● Recibiendo en vivo', st.mode === 'demo' ? 'demo' : 'live');
+  mostrarStats();
+  logEvent('Corriente', 'Reinicio', 'ok', 'Captura de arranque reiniciada: esperando un nuevo arranque del motor');
+  dirty = true;
+};
 $('capturar').onclick = () => { if (W.lastT >= 0 && !W.cap) iniciarCaptura(W.lastT, false); };
 $('borrarCap').onclick = () => {
   const i = Number($('ondaCap').value) || 0, c = W.caps[i]; if (!c) return;
